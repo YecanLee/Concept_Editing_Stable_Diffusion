@@ -1,2 +1,3 @@
-# LinearAttentionTransformer_R
-This repository focus on linear attention transformer models and its application
+# Concept Editing Stable Diffusion
+
+This repo is still underdeveloped, a concept editing model based on cross-attention-mechanism will be updated soon.
