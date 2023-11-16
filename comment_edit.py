@@ -173,4 +173,3 @@ for i in range(len(proj_layers)):
         # Update the weight matrix, this does not require gradient to retrain the model
         proj_layers[i].weight = torch.nn.Parameter(torch.matmul(matrix_1, torch.inverse(matrix_2)))
         
-print(proj_layers[0].weight.shape)
