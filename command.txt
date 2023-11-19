@@ -1,0 +1,24 @@
+python tools/edit_model.py \
+  configs/edit/sd_21_uce.py \
+  "hose, gecko, line, circle, scales, pattern" \
+  -w workdirs/debug/
+
+python tools/generate_images.py \
+  configs/generate/sd_21_only_fingers_removed.py \
+  -w workdirs/debug/only_fingers \
+  --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20 \
+  -c workdirs/debug/editor_cq4f3.pt
+
+python tools/generate_images.py \
+  configs/generate/sd_21_general.py \
+  -w workdirs/debug/laptop \
+  --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20 \
+  -c workdirs/debug/editor_smjqs.pt
+
+
+python tools/generate_images.py \
+  configs/generate/sd_21_general.py \
+  -w workdirs/debug/laptop \
+  --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20
+
+  laptop, pad, keyboard, rectangle, square
