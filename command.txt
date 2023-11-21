@@ -1,6 +1,6 @@
 python tools/edit_model.py \
   configs/edit/sd_21_uce.py \
-  "hose, gecko, line, circle, scales, pattern" \
+  "fish" \
   -w workdirs/debug/
 
 python tools/generate_images.py \
@@ -11,14 +11,12 @@ python tools/generate_images.py \
 
 python tools/generate_images.py \
   configs/generate/sd_21_general.py \
-  -w workdirs/debug/laptop \
+  -w workdirs/debug/fish \
   --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20 \
-  -c workdirs/debug/editor_smjqs.pt
-
+  -c workdirs/debug/editor_1t4e5.pt
 
 python tools/generate_images.py \
   configs/generate/sd_21_general.py \
-  -w workdirs/debug/laptop \
+  -w workdirs/debug/remove_giraffe \
   --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20
-
-  laptop, pad, keyboard, rectangle, square
+  
