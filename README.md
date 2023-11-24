@@ -1,3 +1,3 @@
-# Concept Editing Stable Diffusion
+# Concept Editing with Stable Diffusion
 
-This repo is still underdeveloped, a concept editing model based on cross-attention-mechanism will be updated soon.
+This is an evolving repo for uce model/related models custom implementation and test.
