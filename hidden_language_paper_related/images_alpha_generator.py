@@ -967,7 +967,7 @@ def main():
   best_words = None
   validation_model = CLIPImageSimilarity()
 
-  for epoch in range(first_epoch, args.num_train_epochs):   
+  for epoch in range(first_epoch, args.num_train_epochs):
     net.train()
     for batch in train_dataloader:
       text_encoder.get_input_embeddings().weight.detach_().requires_grad_(False)
@@ -975,20 +975,26 @@ def main():
       # calculate current embeddings
       token_embeds = text_encoder.get_input_embeddings().weight
       alphas = net(dictionary)
+
+      alphas /= alphas.sum()
+
       _, sorted_indices = torch.sort(alphas.abs(), descending=True) # why do we need the abs here?
+
+      cumulative_alphas = torch.cumsum(alphas[sorted_indices], dim=0)
+
+      # Find the last index where cumulative sum is less than or equal to 0.9
+      last_index = torch.where(cumulative_alphas <= 0.9)[0][-1].item()
+
+      # Get the indices corresponding to the top contributing alphas
+      top_alpha_indices = sorted_indices[:last_index + 1].cpu().numpy().tolist()
       # initialize an empty list, add the top alphas to this empty list, if the alphas accumulated to 0.9, 
-      # then we stop adding the alphas to the list.
-      empty_list = []
-      for i in range(len(sorted_indices)):
-        empty_list.append(sorted_indices[i].item())
-        if sum(alphas[empty_list]) > 0.9:
-          break
-      print('the top alpha indices are: ', empty_list, 'the top alpha values are: ', [alphas[i] for i in empty_list])
-      print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in empty_list]) # print the top words, those words' alpha accumulated to 0.9
+
+      print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
+      print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
       # print_words = min(50, args.num_explanation_tokens)
       
       num_words = args.dictionary_size
-      word_indices = sorted_indices[:num_words]
+      word_indices = sorted_indices[:num_words] # ALERT! This is super arbitrary! The original paper used 50 which is dubious, how could we judge whether '50' is a good number or not?
       # this is how the pesudo embedding is calculated, the alpha is the weight, the dictionary is the embedding
       embedding = torch.matmul(alphas[word_indices], dictionary[word_indices]) 
       embedding = torch.mul(embedding, 1 / embedding.norm())
