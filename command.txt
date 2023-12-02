@@ -1,6 +1,6 @@
 python tools/edit_model.py \
   configs/edit/sd_21_uce.py \
-  "fish" \
+  "pencil, pen" \
   -w workdirs/debug/
 
 python tools/generate_images.py \
@@ -11,12 +11,41 @@ python tools/generate_images.py \
 
 python tools/generate_images.py \
   configs/generate/sd_21_general.py \
-  -w workdirs/debug/fish \
+  -w workdirs/debug/weapons_edited \
   --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20 \
-  -c workdirs/debug/editor_1t4e5.pt
+  -c workdirs/debug/editor_41xe7.pt
 
 python tools/generate_images.py \
   configs/generate/sd_21_general.py \
-  -w workdirs/debug/remove_giraffe \
+  -w workdirs/debug/go \
   --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20
   
+python tools/generate_images.py \
+  configs/generate/sd_21_general.py \
+  -w workdirs/debug/cattle_unedited \
+  --cfg-options generator.till_case=20 generator.inference_cfg.num_images_per_prompt=20
+
+
+## openfe
+python -m one_step_reconstruction.py \
+  --prompt="a photo of a dog" \
+  --concept="dog" \
+  --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1-base" \
+  --placeholder_token="<>" \
+  --train_batch_size=6 \
+  --validation_prompt="a photo of a <>" \
+  --num_validation_images=20 \
+  --train_data_dir="./dog_train"/ \
+  --validation_data_dir="./dog_val" \
+  --output_dir="./dog" \
+  --dictionary_size=5000 \
+  --num_explanation_tokens=50 \
+  --validation_steps=50 \
+  --learning_rate=1e-3 \
+  --max_train_steps 500 \
+  --seed 1024 \
+  --validation_seed 2 \
+  --sparsity_coeff=0.001 \
+  --path_to_encoder_embeddings="/dss/dsshome1/03/ra78lof2/uce/workdirs/debug/embeddings/my_embeddings.pt" \
+  --remove_concept_tokens > ./log.txt
+ 
