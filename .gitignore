@@ -91,3 +91,12 @@ target/
 # Ignore the commend.txt file
 commend.txt
 ```
+
+# Ignore the sweetpepper_train folder
+sweetpepper_train/
+
+# Ignore the sweetpepper_val folder
+sweetpepper_val/
+
+# Ignore the sweetpepper folder
+sweetpepper/

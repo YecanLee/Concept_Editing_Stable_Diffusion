@@ -27,25 +27,27 @@ python tools/generate_images.py \
 
 
 ## openfe
-python -m one_step_reconstruction.py \
-  --prompt="a photo of a dog" \
-  --concept="dog" \
+python -m images_alpha_generator.py \
+  --prompt="a photo of a sweetpepper" \
+  --concept="sweetpepper" \
   --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1-base" \
   --placeholder_token="<>" \
   --train_batch_size=6 \
   --validation_prompt="a photo of a <>" \
   --num_validation_images=20 \
-  --train_data_dir="./dog_train"/ \
-  --validation_data_dir="./dog_val" \
-  --output_dir="./dog" \
+  --train_data_dir="./sweetpepper_train"/ \
+  --validation_data_dir="./sweetpepper_val" \
+  --output_dir="./sweetpepper" \
   --dictionary_size=5000 \
   --num_explanation_tokens=50 \
   --validation_steps=50 \
   --learning_rate=1e-3 \
   --max_train_steps 500 \
   --seed 1024 \
-  --validation_seed 2 \
+  --validation_seed 1020 \
   --sparsity_coeff=0.001 \
-  --path_to_encoder_embeddings="/dss/dsshome1/03/ra78lof2/uce/workdirs/debug/embeddings/my_embeddings.pt" \
+  --path_to_encoder_embeddings="my_embeddings.pt" \
   --remove_concept_tokens > ./log.txt
  
+
+python hidden_language_paper_related/images_alpha_generator.py --prompt="a photo of a sweetpepper" --concept="sweetpepper" --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1-base" --placeholder_token="<>" --train_batch_size=6 --validation_prompt="a photo of a <>" --num_validation_images=20 --train_data_dir="./sweetpepper_train"/ --validation_data_dir="./sweetpepper_val" --output_dir="./sweetpepper" --dictionary_size=5000 --num_explanation_tokens=50 --validation_steps=50 --learning_rate=1e-3 --max_train_steps 500 --seed 1024 --validation_seed 2 --sparsity_coeff=0.001 --path_to_encoder_embeddings="my_embeddings.pt" --remove_concept_tokens > ./log.txt

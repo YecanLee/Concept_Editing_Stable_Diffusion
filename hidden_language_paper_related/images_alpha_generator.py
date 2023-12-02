@@ -22,6 +22,7 @@ import math
 import os
 from pathlib import Path
 import random
+import sys
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -358,7 +359,7 @@ def parse_args():
   parser.add_argument(
       "--path_to_encoder_embeddings",
       type=str,
-      default="./clip_text_encoding.pt",
+      default="my_embeddings.pt",
       help="Path to the saved embeddings matrix of the text encoder",
   )
   parser.add_argument(
@@ -593,12 +594,12 @@ def get_clip_encodings(data_root):
 
 
 def get_dictionary_indices(
-    args, target_image_encodings, tokenizer, dictionary_size, concept
+    args, target_image_encodings, tokenizer, dictionary_size
 ):
   clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(
       "cuda"
   )
-  text_encodings = torch.load(args.text_embeddings_path) # the shape of the text_encodings is (num_tokens, 512) aka (batch_size, embedding_size)
+  text_encodings = torch.load(args.path_to_encoder_embeddings) # the shape of the text_encodings is (num_tokens, 512) aka (batch_size, embedding_size)
 
   # calculate cosine similarities for the average image
   # the shape of the mean_target_image is (1, 512) aka (batch_size, embedding_size)
@@ -611,7 +612,7 @@ def get_dictionary_indices(
   if args.remove_concept_tokens:
     # remove concept tokens
     clip_concept_inputs = tokenizer(
-        concept, padding=True, return_tensors="pt"
+        [args.concept], padding=True, return_tensors="pt"
     ).to("cuda")
     clip_concept_features = clip_model.get_text_features(**clip_concept_inputs) # the shape of the clip_concept_features is (1, 512) aka (batch_size, embedding_size)
 
@@ -719,11 +720,12 @@ def generate_images_if_needed(
 def main():
   args = parse_args()
   logging_dir = os.path.join(args.output_dir, args.logging_dir)
+
   accelerator = Accelerator(
       gradient_accumulation_steps=args.gradient_accumulation_steps,
       mixed_precision=args.mixed_precision,
       log_with=args.report_to,
-      logging_dir=logging_dir,
+      project_dir=logging_dir,
   )
 
   # Make one log on every process with the configuration for debugging.
@@ -991,13 +993,14 @@ def main():
       token_embeds = text_encoder.get_input_embeddings().weight
       alphas = net(dictionary)
       _, sorted_indices = torch.sort(alphas.abs(), descending=True) # why do we need the abs here?
-      # initialize an empty list, add the top alphas to this empty list, if the alphas accumulated to 0.8, 
+      # initialize an empty list, add the top alphas to this empty list, if the alphas accumulated to 0.9, 
       # then we stop adding the alphas to the list.
       empty_list = []
       for i in range(len(sorted_indices)):
         empty_list.append(sorted_indices[i].item())
         if sum(alphas[empty_list]) > 0.9:
           break
+      print('the top alpha indices are: ', empty_list, 'the top alpha values are: ', [alphas[i] for i in empty_list])
       print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in empty_list]) # print the top words, those words' alpha accumulated to 0.9
       # print_words = min(50, args.num_explanation_tokens)
       
