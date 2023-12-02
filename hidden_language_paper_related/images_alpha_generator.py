@@ -37,7 +37,6 @@ from diffusers import StableDiffusionPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.schedulers import LMSDiscreteScheduler
 from diffusers.utils.import_utils import is_xformers_available
-from model_zoo import CLIPImageSimilarity
 import numpy as np
 from packaging import version
 import PIL
@@ -50,6 +49,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 import transformers
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPModel, CLIPProcessor
+
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse(
     "9.1.0"
@@ -70,6 +70,319 @@ else:
       "nearest": PIL.Image.NEAREST,
   }
 
+####-----------------The following part is the real code-----------------####
+
+logger = get_logger(__name__)
+
+
+def parse_args():
+  """Parses command line arguments."""
+  parser = argparse.ArgumentParser(
+      description="Simple example of a training script."
+  )
+  parser.add_argument(
+      "--pretrained_model_name_or_path",
+      type=str,
+      default=None,
+      required=True,
+      help=(
+          "Path to pretrained model or model identifier from"
+          " huggingface.co/models."
+      ),
+  )
+  parser.add_argument(
+      "--revision",
+      type=str,
+      default=None,
+      required=False,
+      help=(
+          "Revision of pretrained model identifier from huggingface.co/models."
+      ),
+  )
+  parser.add_argument(
+      "--prompt", type=str, required=True, help="The prompt to be explained."
+  )
+  parser.add_argument(
+      "--train_data_dir",
+      type=str,
+      default=None,
+      required=True,
+      help="A folder containing the training data.",
+  )
+  parser.add_argument(
+      "--validation_data_dir",
+      type=str,
+      default=None,
+      required=True,
+      help="A folder containing the training data.",
+  )
+  parser.add_argument(
+      "--placeholder_token",
+      type=str,
+      default=None,
+      required=True,
+      help="A token to use as a placeholder for the concept.",
+  )
+  parser.add_argument(
+      "--concept",
+      type=str,
+      default=None,
+      required=True,
+      help="The concept to explain.",
+  )
+  parser.add_argument(
+      "--repeats",
+      type=int,
+      default=100,
+      help="How many times to repeat the training data.",
+  )
+  parser.add_argument(
+      "--output_dir",
+      type=str,
+      default="output",
+      help=(
+          "The output directory where the model predictions and checkpoints"
+          " will be written."
+      ),
+  )
+  parser.add_argument(
+      "--seed", type=int, default=1024, help="A seed for train images."
+  )
+  parser.add_argument(
+      "--validation_seed",
+      type=int,
+      default=2,
+      help="A seed for validation images.",
+  )
+  parser.add_argument(
+      "--resolution",
+      type=int,
+      default=512,
+      help=(
+          "The resolution for input images, all the images in the"
+          " train/validation dataset will be resized to this resolution"
+      ),
+  )
+  parser.add_argument(
+      "--center_crop",
+      action="store_true",
+      help="Whether to center crop images before resizing to resolution.",
+  )
+  parser.add_argument(
+      "--remove_concept_tokens",
+      action="store_true",
+      default=False,
+      help="Whether to remove the concept token from the dictionary.",
+  )
+  parser.add_argument(
+      "--train_batch_size",
+      type=int,
+      default=6,
+      help="Batch size (per device) for the training dataloader.",
+  )
+  parser.add_argument("--num_train_epochs", type=int, default=1000)
+  parser.add_argument(
+      "--max_train_steps",
+      type=int,
+      default=1000,
+      help=(
+          "Total number of training steps to perform.  If provided, overrides"
+          " num_train_epochs."
+      ),
+  )
+  parser.add_argument(
+      "--dictionary_size",
+      type=int,
+      default=5000,
+      help="Number of top tokens to consider as dictionary.",
+  )
+  parser.add_argument(
+      "--num_explanation_tokens",
+      type=int,
+      default=50,
+      help="Number of words to produce as explanation.",
+  )
+  parser.add_argument(
+      "--gradient_accumulation_steps",
+      type=int,
+      default=1,
+      help=(
+          "Number of updates steps to accumulate before performing a"
+          " backward/update pass."
+      ),
+  )
+  parser.add_argument(
+      "--gradient_checkpointing",
+      action="store_true",
+      help=(
+          "Whether or not to use gradient checkpointing to save memory at the"
+          " expense of slower backward pass."
+      ),
+  )
+  parser.add_argument(
+      "--learning_rate",
+      type=float,
+      default=1e-3,
+      help="Initial learning rate (after the potential warmup period) to use.",
+  )
+  parser.add_argument(
+      "--sparsity_coeff",
+      type=float,
+      default=0.001,
+      help="Initial learning rate (after the potential warmup period) to use.",
+  )
+  parser.add_argument(
+      "--scale_lr",
+      action="store_true",
+      default=False,
+      help=(
+          "Scale the learning rate by the number of GPUs, gradient accumulation"
+          " steps, and batch size."
+      ),
+  )
+  parser.add_argument(
+      "--lr_scheduler",
+      type=str,
+      default="constant",
+      help=(
+          'The scheduler type to use. Choose between ["linear", "cosine",'
+          ' "cosine_with_restarts", "polynomial", "constant",'
+          ' "constant_with_warmup"]'
+      ),
+  )
+  parser.add_argument(
+      "--lr_warmup_steps",
+      type=int,
+      default=500,
+      help="Number of steps for the warmup in the lr scheduler.",
+  )
+  parser.add_argument(
+      "--dataloader_num_workers",
+      type=int,
+      default=0,
+      help=(
+          "Number of subprocesses to use for data loading. 0 means that the"
+          " data will be loaded in the main process."
+      ),
+  )
+  parser.add_argument(
+      "--adam_beta1",
+      type=float,
+      default=0.9,
+      help="The beta1 parameter for the Adam optimizer.",
+  )
+  parser.add_argument(
+      "--adam_beta2",
+      type=float,
+      default=0.999,
+      help="The beta2 parameter for the Adam optimizer.",
+  )
+  parser.add_argument(
+      "--adam_weight_decay",
+      type=float,
+      default=1e-2,
+      help="Weight decay to use.",
+  )
+  parser.add_argument(
+      "--adam_epsilon",
+      type=float,
+      default=1e-08,
+      help="Epsilon value for the Adam optimizer",
+  )
+  parser.add_argument(
+      "--logging_dir",
+      type=str,
+      default="logs",
+      help=(
+          "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory."
+          " Will default to *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+      ),
+  )
+  parser.add_argument(
+      "--mixed_precision",
+      type=str,
+      default="no",
+      choices=["no", "fp16", "bf16"],
+      help=(
+          "Whether to use mixed precision. Choose"
+          "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
+          "and an Nvidia Ampere GPU."
+      ),
+  )
+  parser.add_argument(
+      "--allow_tf32",
+      action="store_true",
+      help=(
+          "Whether or not to allow TF32 on Ampere GPUs. Can be used to speed up"
+          " training. For more information, see"
+          " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
+      ),
+  )
+  parser.add_argument(
+      "--report_to",
+      type=str,
+      default="tensorboard",
+      help=(
+          "The integration to report the results and logs to. Supported"
+          ' platforms are `"tensorboard"` (default)'
+      ),
+  )
+  parser.add_argument(
+      "--validation_prompt",
+      type=str,
+      default=None,
+      help=(
+          "A prompt that is used during validation to verify that the model is"
+          " learning."
+      ),
+  )
+  parser.add_argument(
+      "--num_validation_images",
+      type=int,
+      default=20,
+      help=(
+          "Number of images that should be generated during validation with"
+          " `validation_prompt`."
+      ),
+  )
+  parser.add_argument(
+      "--validation_steps",
+      type=int,
+      default=50,
+      help=(
+          "Run validation every X epochs. Validation consists of running the"
+          " prompt `args.validation_prompt` multiple times:"
+          " `args.num_validation_images` and logging the images."
+      ),
+  )
+  parser.add_argument(
+      "--path_to_encoder_embeddings",
+      type=str,
+      default="./clip_text_encoding.pt",
+      help="Path to the saved embeddings matrix of the text encoder",
+  )
+  parser.add_argument(
+      "--local_rank",
+      type=int,
+      default=-1,
+      help="For distributed training: local_rank",
+  )
+  parser.add_argument(
+      "--enable_xformers_memory_efficient_attention",
+      action="store_true",
+      help="Whether or not to use xformers.",
+  )
+
+  args = parser.parse_args()
+  env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+  if env_local_rank != -1 and env_local_rank != args.local_rank:
+    args.local_rank = env_local_rank
+
+  if args.train_data_dir is None:
+    raise ValueError("You must specify a train data directory.")
+
+  return args
+
 imagenet_templates_small = [
     "a photo of a {}",
 ]
@@ -82,6 +395,79 @@ def decode_latents(vae, latents):
   image = image.permute(0, 2, 3, 1)
   return image
 
+class ModelZoo:
+
+  def transform(self, image):
+    pass
+
+  def transform_tensor(self, image_tensor):
+    pass
+
+  def calculate_loss(
+      self, output, target_images
+  ):
+    pass
+
+  def get_probability(
+      self, output, target_images
+  ):
+    pass
+
+
+class CLIPImageSimilarity(ModelZoo):
+
+  def __init__(self):
+    # initialize classifier
+    self.clip_model = CLIPModel.from_pretrained(
+        "openai/clip-vit-base-patch32"
+    ).to("cuda")
+    self.clip_processor = CLIPProcessor.from_pretrained(
+        "openai/clip-vit-base-patch32"
+    )
+
+  def transform(self, image):
+    images_processed = self.clip_processor(images=image, return_tensors="pt")[
+        "pixel_values"
+    ].cuda()
+    return images_processed
+
+  def transform_tensor(self, image_tensor):
+    image_tensor = torch.nn.functional.interpolate(
+        image_tensor, size=(224, 224), mode="bicubic", align_corners=False
+    )
+    normalize = transforms.Normalize(
+        mean=[0.48145466, 0.4578275, 0.40821073],
+        std=[0.26862954, 0.26130258, 0.27577711],
+    )
+    image_tensor = normalize(image_tensor)
+    return image_tensor
+
+  def calculate_loss(
+      self, output, target_images
+  ):
+    # calculate CLIP loss
+    output = self.clip_model.get_image_features(output)
+    # loss = -torch.cosine_similarity(output, input_clip_embedding, axis=1)
+
+    mean_target_image = target_images.mean(dim=0).reshape(1, -1)
+    loss = torch.mean(
+        torch.cosine_similarity(
+            output[None], mean_target_image[:, None], axis=2
+        ),
+        axis=1,
+    )
+    loss = 1 - loss.mean()
+    return loss
+
+  def get_probability(
+      self, output, target_images
+  ):
+    output = self.clip_model.get_image_features(output)
+    mean_target_image = target_images.mean(dim=0).reshape(1, -1)
+    loss = torch.mean(
+        torch.cosine_similarity(output[None], mean_target_image, axis=2), axis=1
+    )
+    return loss.mean()
 
 class ConceptDataset(Dataset):
   def __init__(
@@ -207,12 +593,12 @@ def get_clip_encodings(data_root):
 
 
 def get_dictionary_indices(
-    target_image_encodings, tokenizer, dictionary_size, text_embeddings_path, concept, remove_concept_tokens=True
+    args, target_image_encodings, tokenizer, dictionary_size, concept
 ):
   clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(
       "cuda"
   )
-  text_encodings = torch.load(text_embeddings_path) # the shape of the text_encodings is (num_tokens, 512) aka (batch_size, embedding_size)
+  text_encodings = torch.load(args.text_embeddings_path) # the shape of the text_encodings is (num_tokens, 512) aka (batch_size, embedding_size)
 
   # calculate cosine similarities for the average image
   # the shape of the mean_target_image is (1, 512) aka (batch_size, embedding_size)
@@ -222,7 +608,7 @@ def get_dictionary_indices(
   ).reshape(1, -1)
 
 
-  if remove_concept_tokens:
+  if args.remove_concept_tokens:
     # remove concept tokens
     clip_concept_inputs = tokenizer(
         concept, padding=True, return_tensors="pt"
@@ -330,16 +716,29 @@ def generate_images_if_needed(
   del pipe
   torch.cuda.empty_cache()
 
-
 def main():
+  args = parse_args()
+  logging_dir = os.path.join(args.output_dir, args.logging_dir)
   accelerator = Accelerator(
-      gradient_accumulation_steps=gradient_accumulation_steps,
-      mixed_precision=mixed_precision,
-      log_with=report_to,
+      gradient_accumulation_steps=args.gradient_accumulation_steps,
+      mixed_precision=args.mixed_precision,
+      log_with=args.report_to,
+      logging_dir=logging_dir,
   )
 
   # Make one log on every process with the configuration for debugging.
-
+  logging.basicConfig(
+      format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+      datefmt="%m/%d/%Y %H:%M:%S",
+      level=logging.INFO,
+  )
+  logger.info(accelerator.state, main_process_only=False)
+  if accelerator.is_local_main_process:
+    transformers.utils.logging.set_verbosity_warning()
+    diffusers.utils.logging.set_verbosity_info()
+  else:
+    transformers.utils.logging.set_verbosity_error()
+    diffusers.utils.logging.set_verbosity_error()
   if accelerator.is_local_main_process:
     transformers.utils.logging.set_verbosity_warning()
     diffusers.utils.logging.set_verbosity_info()
@@ -583,7 +982,7 @@ def main():
   best_words = None
   validation_model = CLIPImageSimilarity()
 
-  for epoch in range(first_epoch, args.num_train_epochs):
+  for epoch in range(first_epoch, args.num_train_epochs):   
     net.train()
     for batch in train_dataloader:
       text_encoder.get_input_embeddings().weight.detach_().requires_grad_(False)
@@ -599,7 +998,7 @@ def main():
         empty_list.append(sorted_indices[i].item())
         if sum(alphas[empty_list]) > 0.9:
           break
-      print('top words', [tokenizer.decode(dictionary_indices[i]) for i in empty_list]) # print the top words, those words' alpha accumulated to 0.9
+      print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in empty_list]) # print the top words, those words' alpha accumulated to 0.9
       # print_words = min(50, args.num_explanation_tokens)
       
       num_words = args.dictionary_size
