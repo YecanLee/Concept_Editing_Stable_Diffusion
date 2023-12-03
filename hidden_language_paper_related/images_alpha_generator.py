@@ -989,8 +989,8 @@ def main():
       top_alpha_indices = sorted_indices[:last_index + 1].cpu().numpy().tolist()
       # initialize an empty list, add the top alphas to this empty list, if the alphas accumulated to 0.9, 
 
-      print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
-      print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
+      # print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
+      # print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
       # print_words = min(50, args.num_explanation_tokens)
       
       num_words = args.dictionary_size
@@ -1006,12 +1006,14 @@ def main():
           tokenizer.decode(dictionary_indices[i]) for i in sorted_indices[:print_words]
       ]
       # print out the top words with considering about the alphas, this will also show if the alphas are distributed evenly
+      """
       print(
           "top words: ",
           top_words_no_alphas,
           "alphas: ",
           alphas[sorted_indices[:print_words]],
       )
+      """
 
 
       token_embeds[placeholder_token_id] = embedding
@@ -1079,8 +1081,8 @@ def main():
             top_embedding.reshape(1, -1), embedding.reshape(1, -1)
         )
 
-        print("the sparsity_loss is: ", sparsity_loss)
-        print("the mse_loss is: ", mse_loss)
+        # print("the sparsity_loss is: ", sparsity_loss)
+        # print("the mse_loss is: ", mse_loss)
 
         # calculate final loss, this loss composed of two parts, the mse_loss and the sparsity_loss
         # ALERT! PlEASE CHECK THE LOSS FUNCTION HERE
@@ -1199,6 +1201,16 @@ def main():
       f"saving best alphas from validation step {best_epoch}, words = ",
       best_words,
   )
+
+  print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
+  print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
+  print(
+          "top words: ",
+          top_words_no_alphas,
+          "alphas: ",
+          alphas[sorted_indices[:print_words]],
+      )
+  
   torch.save(best_alphas, f"{args.output_dir}/best_alphas.pt")
 
 
