@@ -155,7 +155,6 @@ def parse_args():
   parser.add_argument(
       "--remove_concept_tokens",
       action="store_true",
-      default=False,
       help="Whether to remove the concept token from the dictionary.",
   )
   parser.add_argument(
@@ -448,8 +447,10 @@ class CLIPImageSimilarity(ModelZoo):
   ):
     output = self.clip_model.get_image_features(output)
     mean_target_image = target_images.mean(dim=0).reshape(1, -1)
+    output = output.unsqueeze(1)
+    mean_target_image = mean_target_image.unsqueeze(0)
     loss = torch.mean(
-        torch.cosine_similarity(output[None], mean_target_image, axis=2), axis=1
+        torch.cosine_similarity(output, mean_target_image, axis=2), axis=1
     )
     return loss.mean()
 
@@ -599,7 +600,7 @@ def get_dictionary_indices(
     ).to("cuda")
     clip_concept_features = clip_model.get_text_features(**clip_concept_inputs) # the shape of the clip_concept_features is (1, 512) aka (batch_size, embedding_size)
 
-# the shape of the concept_words_similarity is (1, num_tokens) aka (batch_size, num_tokens)
+    # the shape of the concept_words_similarity is (1, num_tokens) aka (batch_size, num_tokens)
     concept_words_similarity = torch.cosine_similarity(
         clip_concept_features, text_encodings, axis=1
     )
@@ -965,6 +966,8 @@ def main():
   best_alphas = None
   best_epoch = None
   best_words = None
+  final_alphas = None
+  final_top_alphas_indices = None 
   validation_model = CLIPImageSimilarity()
 
   for epoch in range(first_epoch, args.num_train_epochs):
@@ -978,17 +981,16 @@ def main():
 
       alphas /= alphas.sum()
 
-      _, sorted_indices = torch.sort(alphas.abs(), descending=True) # why do we need the abs here?
+      # _, sorted_indices = torch.sort(alphas.abs(), descending=True) # why do we need the abs here?
 
-      cumulative_alphas = torch.cumsum(alphas[sorted_indices], dim=0)
+      # cumulative_alphas = torch.cumsum(alphas[sorted_indices], dim=0)
 
       # Find the last index where cumulative sum is less than or equal to 0.9
-      last_index = torch.where(cumulative_alphas <= 0.9)[0][-1].item()
+      # last_index = torch.where(cumulative_alphas <= 0.9)[0][-1].item()
 
       # Get the indices corresponding to the top contributing alphas
-      top_alpha_indices = sorted_indices[:last_index + 1].cpu().numpy().tolist()
-      # initialize an empty list, add the top alphas to this empty list, if the alphas accumulated to 0.9, 
-
+      # top_alpha_indices = sorted_indices[:last_index + 1].cpu().numpy().tolist()
+      
       # print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
       # print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
       # print_words = min(50, args.num_explanation_tokens)
@@ -999,8 +1001,10 @@ def main():
       embedding = torch.matmul(alphas[word_indices], dictionary[word_indices]) 
       embedding = torch.mul(embedding, 1 / embedding.norm())
       embedding = torch.mul(embedding, avg_norm)
+
+      # print(embedding.shape)
       
-      print_words = 50
+      print_words = args.num_explanation_tokens
       # print out the top words without considering about the alphas
       top_words_no_alphas = [
           tokenizer.decode(dictionary_indices[i]) for i in sorted_indices[:print_words]
@@ -1014,7 +1018,6 @@ def main():
           alphas[sorted_indices[:print_words]],
       )
       """
-
 
       token_embeds[placeholder_token_id] = embedding
       text_encoder.get_input_embeddings().weight.requires_grad_(True)
@@ -1077,9 +1080,11 @@ def main():
         top_embedding = torch.matmul(
             alphas[top_indices], dictionary[top_indices]
         )
+        # print(top_embedding.shape, "this is the top_embedding.shape")
         sparsity_loss = 1 - torch.cosine_similarity(
             top_embedding.reshape(1, -1), embedding.reshape(1, -1)
         )
+        # print(args.sparsity_coeff * sparsity_loss)
 
         # print("the sparsity_loss is: ", sparsity_loss)
         # print("the mse_loss is: ", mse_loss)
@@ -1088,6 +1093,9 @@ def main():
         # ALERT! PlEASE CHECK THE LOSS FUNCTION HERE
         # A possible replacment would be
         # loss = mse_loss + args.sparsity_coeff * sparsity_loss + args.l1_coeff * torch.norm(alphas, 1)
+
+        # L2_term = torch.norm(alphas, 2)
+        # loss = mse_loss + args.sparsity_coeff * L2_term
         loss = mse_loss + args.sparsity_coeff * sparsity_loss
 
         accelerator.backward(loss)
@@ -1195,22 +1203,27 @@ def main():
 
       if global_step >= args.max_train_steps:
         break
+        
+  final_alphas = alphas.detach().clone()
+  _, sorted_indices = torch.sort(final_alphas.abs(), descending = True)
 
+  cumulative_alphas = torch.cumsum(final_alphas[sorted_indices], dim=0)
+  last_index = torch.where(cumulative_alphas<=0.9)[0][-1].item()
+  top_alphas_indices = sorted_indices[:last_index+1].cpu().numpy().tolist()
   accelerator.end_training()
   print(
       f"saving best alphas from validation step {best_epoch}, words = ",
       best_words,
   )
-
-  print('the top alpha indices are: ', top_alpha_indices, 'the top alpha values are: ', [alphas[i] for i in top_alpha_indices])
-  print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alpha_indices]) # print the top words, those words' alpha accumulated to 0.9
+  print('the top alpha indices are: ', top_alphas_indices, 'the top alpha values are: ', [alphas[i] for i in top_alphas_indices])
+  print('top words with customrized idea', [tokenizer.decode(dictionary_indices[i]) for i in top_alphas_indices]) # print the top words, those words' alpha accumulated to 0.9
   print(
           "top words: ",
           top_words_no_alphas,
           "alphas: ",
           alphas[sorted_indices[:print_words]],
       )
-  
+
   torch.save(best_alphas, f"{args.output_dir}/best_alphas.pt")
 
 
